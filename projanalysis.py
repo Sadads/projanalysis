@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ProjAnalysis -- performs analysis of a WikiProject. Use sparingly.
-Version 1.0
+Version 1.1
 Copyright (C) 2015 James Hare
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -25,9 +25,9 @@ IN THE SOFTWARE.
 
 import sys
 import json
-import requests
 import re
 import mw # https://github.com/legoktm/supersimplemediawiki
+import pymysql
 
 class ProjAnalysis:
     def mwquery(inputparams):
@@ -41,9 +41,17 @@ class ProjAnalysis:
         
         data = enwp.request(params)
         
-        #resp = requests.get(url=url, params=params)
-        #data = resp.json()
+        return data
+
+    def dbquery(sqlquery):
+        """Constructs a MySQL query to the Tool Labs database replica."""
         
+        conn = pymysql.connect(host='enwiki.labsdb', port=3306, db='enwiki_p', read_default_file='~/.my.cnf')
+        cur = conn.cursor()
+        cur.execute(sqlquery)
+        data = []
+        for row in cur:
+            data.append(row[0])
         return data
     
     def getsubpages(prefix, namespace):
@@ -57,54 +65,34 @@ class ProjAnalysis:
         	'continue': ''
         }
         
+        output = []
         query = ProjAnalysis.mwquery(functionparams)
-        output = query['query']['allpages']
+        for x in query['query']['allpages']:
+            output.append(x['pageid'])
         
         while 'continue' in query:
             functionparams['apcontinue'] = query['continue']['apcontinue']
             query = ProjAnalysis.mwquery(functionparams)
             for x in query['query']['allpages']:
-                output.append(x)
+                output.append(x['pageid'])
         
         return output
     
     def contributorfinder(title):
         """Prepares a list of contributors for *title* in a given date range. Includes duplicate usernames for each time they made an edit."""
         
-        functionparams = {
-            'prop': 'revisions',
-            'rvlimit': 'max',
-            'rvexcludeuser': 'Harej', # I spammed roughly every WikiProject and shouldn't be counted.
-            'rvstart': 20150228000000,
-            'rvend': 20140301000000, # One year analysis period
-            'rvprop': 'user',
-            'titles': title,
-            'continue': ''
-        }
+        query = "select rev_user_text from revision_userindex where rev_page = " + str(title) + " and rev_timestamp > 20140228235959 and rev_timestamp < 20150301000000 and rev_user != 0 and rev_user_text != 'Harej';"
         
-        query = ProjAnalysis.mwquery(functionparams)
+        usernames = ProjAnalysis.dbquery(query)
         
-        try:
-            list(query['query']['pages'].values())[0]['revisions']
-        except KeyError:
+        output = []
+        for username in usernames:
+            output.append(username.decode('utf-8'))
+        
+        if len(usernames) == 0:
             return None
         else:
-            users = list(query['query']['pages'].values())[0]['revisions'] # This atrocity produces a list of dictionaries for each appearance of a username
-
-        usernames = []
-        for user in users:
-            if 'anon' not in user:
-                usernames.append(user['user'])
-        
-        while 'continue' in query:
-            functionparams['rvcontinue'] = query['continue']['rvcontinue']
-            query = ProjAnalysis.mwquery(functionparams)
-            users = list(query['query']['pages'].values())[0]['revisions']
-            for user in users:
-                if 'anon' not in user:
-                    usernames.append(user['user'])
-        
-        return usernames
+            return output
     
     def userstats(completelist, bots):
         """Removes bot list of usernames and gives edit frequency information using the list that has not been de-duped."""
@@ -137,14 +125,14 @@ class ProjAnalysis:
         
         transcludes = []
         for transclude in transcludeslist:
-            transcludes.append(transclude['title'])
+            transcludes.append(transclude['pageid'])
             
         while 'continue' in query:
             functionparams['ticontinue'] = query['continue']['ticontinue']
             query = ProjAnalysis.mwquery(functionparams)
             transcludeslist = list(query['query']['pages'].values())[0]['transcludedin']
             for transclude in transcludeslist:
-                transcludes.append(transclude['title'])
+                transcludes.append(transclude['pageid'])
         
         # That list produces talk pages. We also want the non-talk versions.
         
@@ -167,16 +155,16 @@ class ProjAnalysis:
         print("Generating list of WikiProject subpages...")
         allpages = ProjAnalysis.getsubpages(project, 4) # "Wikipedia:" namespace
         alltalkpages = ProjAnalysis.getsubpages(project, 5) # "Wikipedia talk:" namespace
-            
-        projectpages = ["Wikipedia:" + project, "Wikipedia talk:" + project] # Initializing list with main project page and its talk page
         
-        for dictionary in allpages:
-            projectpages.append(dictionary['title'])
-            
-        for dictionary in alltalkpages:
-            projectpages.append(dictionary['title'])
+        # We need page IDs for our main WikiProject page and talk page. Note that this returns a one-entry list.
+        root_page = ProjAnalysis.dbquery("select page_id from page where page_title='" + project.replace(" ", "_") + "' and page_namespace=4;")
+        root_talk = ProjAnalysis.dbquery("select page_id from page where page_title='" + project.replace(" ", "_") + "' and page_namespace=5;")
         
-        # We now have our list of pages. Because of API restrictions we have to query one at a time to get the list of contributors.
+        projectpages = [root_page[0], root_talk[0]] # Initializing list with main project page and its talk page
+        projectpages += allpages
+        projectpages += alltalkpages
+        
+        # We now have our list of pages.
         
         print("Generating list of WikiProject-space contributors...")
         projectcontributors = []
@@ -198,7 +186,7 @@ class ProjAnalysis:
         
         scopecontributors = []
         for page in projectscope:
-            print("Fetching edit history of " + page + "...")
+            print("Fetching edit history of page ID " + str(page) + "...")
             listyield = ProjAnalysis.contributorfinder(page)
             if listyield is not None:
                 for x in listyield:

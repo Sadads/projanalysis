@@ -28,7 +28,7 @@ from projanalysis import ProjAnalysis
 if __name__ == "__main__":
     pairs=[
         ["WikiProject Star Trek", "WikiProject Star Trek"],
-        ["WikiProject Romania", "WikiProject Romania"],
+        ["WikiProject Frank Zappa", "WikiProject Frank Zappa"],
         ["WikiProject Christianity", "WikiProject Christianity"],
         ["WikiProject Latin music", "WikiProject Latin music"],
         ["WikiProject Women writers", "WikiProject Women writers"],
