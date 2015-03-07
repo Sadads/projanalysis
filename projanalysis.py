@@ -1,19 +1,16 @@
 # -*- coding: utf-8 -*-
 """
 ProjAnalysis -- performs analysis of a WikiProject. Use sparingly.
-Version 1.1
+Version 1.2
 Copyright (C) 2015 James Hare
-
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the "Software"),
 to deal in the Software without restriction, including without limitation
 the rights to use, copy, modify, merge, publish, distribute, sublicense,
 and/or sell copies of the Software, and to permit persons to whom the
 Software is furnished to do so, subject to the following conditions:
-
 The above copyright notice and this permission notice shall be included in
 all copies or substantial portions of the Software.
-
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
 OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -25,7 +22,6 @@ IN THE SOFTWARE.
 
 import sys
 import json
-import re
 import mw # https://github.com/legoktm/supersimplemediawiki
 import pymysql
 
@@ -123,26 +119,27 @@ class ProjAnalysis:
         
         transcludeslist = list(query['query']['pages'].values())[0]['transcludedin']
         
-        transcludes = []
+        talks = []
         for transclude in transcludeslist:
-            transcludes.append(transclude['pageid'])
+            talks.append(transclude['pageid'])
             
         while 'continue' in query:
             functionparams['ticontinue'] = query['continue']['ticontinue']
             query = ProjAnalysis.mwquery(functionparams)
             transcludeslist = list(query['query']['pages'].values())[0]['transcludedin']
             for transclude in transcludeslist:
-                transcludes.append(transclude['pageid'])
+                talks.append(transclude['pageid'])
         
-        # That list produces talk pages. We also want the non-talk versions.
+        # That list produces talk pages. We also want the non-talk pages.
         
-        output = []
-        for talk in transcludes:
-            nontalk = re.sub(r" ?[Tt]alk:", ":", talk)
-            if nontalk[0] == ":":
-                nontalk = nontalk.replace(":", "", 1) # Largely for standardization purposes; this wouldn't break the API or anything
-            output.append(nontalk)
-            output.append(talk)
+        nontalks = []
+        for talk in talks:
+            query = "Select p1.page_id from page p1 inner join page p2 on p1.page_namespace = p2.page_namespace - 1 and p1.page_title = p2.page_title where p2.page_id = " + str(talk) + ";"
+            nontalk = ProjAnalysis.dbquery(query)
+            if nontalk:
+                nontalks.append(nontalk[0])
+        
+        output = talks + nontalks
         
         return output
         
