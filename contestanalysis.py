@@ -18,8 +18,8 @@ index = [35465462, 35882197, 35171500, 35548551, 35648306, 35151605, 35151606, 3
 
 completelist = []
 for i in index:
-    query = commonsquery("select rev_user_text from revision_userindex where rev_page = + str(i) + "limit 1")
-    completelist = query[0]
+    query = commonsquery("select rev_user_text from revision_userindex where rev_page = " + str(i) + " limit 1;")
+    completelist.append(query[0].decode('utf-8'))
 
 uniques = list(set(completelist))
 
