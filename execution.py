@@ -84,6 +84,7 @@ if __name__ == "__main__":
         ["WikiProject Albums", "WikiProject Albums"],
         ["WikiProject Film", "WikiProject Film"],
         ["WikiProject Football", "WikiProject Football"]
+        ["WikiProject Novels", "WikiProject Novels"
     ]
     
     # Taking out: WikiProject Guatemala, WikiProject United States presidential elections, WikiProject Louisville
